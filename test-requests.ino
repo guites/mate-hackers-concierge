@@ -7,8 +7,6 @@
 #include <Arduino_JSON.h>
 #include <WiFiClientSecure.h>
 
-#define CHAT_ID "123445"
-
 const String BOT_TOKEN = "bottoken";
 const char* ssid = "wifi-username";
 const char* password = "wifi-pass";
