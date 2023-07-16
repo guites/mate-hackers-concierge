@@ -4,9 +4,7 @@
 
 #include <ESP8266WiFi.h>
 #include <ESP8266HTTPClient.h>
-// #include <WiFiClient.h>
 #include <Arduino_JSON.h>
-// #include <WiFiClientSecureBearSSL.h>
 #include <WiFiClientSecure.h>
 
 #define CHAT_ID "123445"
@@ -17,14 +15,6 @@ const char* password = "wifi-pass";
 
 // Base URL for bot requests
 String baseUrl = "https://api.telegram.org/bot" + BOT_TOKEN;
-
-// the following variables are unsigned longs because the time, measured in
-// milliseconds, will quickly become a bigger number than can be stored in an int.
-unsigned long lastTime = 0;
-// Timer set to 10 minutes (600000)
-//unsigned long timerDelay = 600000;
-// Set timer to 5 seconds (5000)
-unsigned long timerDelay = 5000;
 
 int last_received_id = 0;
 int polling_seconds = 30;
@@ -43,62 +33,119 @@ void setup() {
   }
   Serial.print("\nConnected to WiFi network with IP Address: ");
   Serial.println(WiFi.localIP());
- 
-  Serial.println("Timer set to 5 seconds (timerDelay variable), it will take 5 seconds before publishing the first reading.");
 }
 
 void loop() {
-  // Send an HTTP GET request depending on timerDelay
-  if ((millis() - lastTime) > timerDelay) {
-    lastTime = millis();
-    //Check WiFi connection status
-    if(WiFi.status() != WL_CONNECTED){
-      Serial.println("WiFi Disconnected");
-      return;
-    }
-    // String getMeEndpoint = baseUrl + "/getMe";
-    int updatesOffset = last_received_id + 1;
-    String getUpdatesEndpoint = baseUrl + "/getUpdates?offset=" + updatesOffset + "&timeout=" + polling_seconds;
-    stringPayload = httpGETRequest(getUpdatesEndpoint);
-    JSONVar objPayload = JSON.parse(stringPayload);
+  //Check WiFi connection status
+  if(WiFi.status() != WL_CONNECTED){
+    Serial.println("WiFi Disconnected");
+    return;
+  }
+  // String getMeEndpoint = baseUrl + "/getMe";
+  
+  JSONVar updates = getUpdates(last_received_id);
 
-    // JSON.typeof(jsonVar) can be used to get the type of the var
-    if (JSON.typeof(objPayload) == "undefined") {
-      Serial.println("Parsing input failed!");
-      return;
-    }
+  for (int i = 0; i < updates["result"].length(); i++) {
+    JSONVar update = updates["result"][i];
 
-    for (int i = 0; i < objPayload["result"].length(); i++) {
-      JSONVar currentResult = objPayload["result"][i];
+    int update_id = update["update_id"];
 
-      // myObject.keys() can be used to get an array of all the keys in the object
-      JSONVar resultKeys = currentResult.keys();
+    int message_id = update["message"]["message_id"];
+    int from_id = update["message"]["from"]["id"];
+    bool is_bot = update["message"]["from"]["is_bot"];
+    String from_first_name = update["message"]["from"]["first_name"];
+    String language_code = update["message"]["from"]["language_code"];
+    
+    int chat_id = update["message"]["chat"]["id"];
+    String chat_first_name = update["message"]["chat"]["first_name"];
+    String chat_type = update["message"]["chat"]["type"];
 
-      for (int j = 0; j < resultKeys.length(); j++) {
-        JSONVar value = currentResult[resultKeys[j]];
-        Serial.print(resultKeys[j]);
-        Serial.print(" = ");
-        Serial.println(value);  
-      }
+    String text = update["message"]["text"];
 
-      int update_id = currentResult["update_id"];
-      int from_id = currentResult["from"]["id"];
-      int from_username = currentResult["from"]["username"];
-      String text = currentResult["text"];
+    Serial.println("--------");
+    Serial.print(update_id);
+    Serial.print(" from ");
+    Serial.print(from_first_name);
+    Serial.print(": ");
+    Serial.println(text);
 
-      Serial.print(update_id);
-      Serial.print(" from ");
-      Serial.print(from_username);
-      Serial.print(": ");
-      Serial.println(text);
 
-      last_received_id = update_id;
-    } 
+    handleResponse(chat_id, text);
+
+    Serial.println("--------");
+
+    last_received_id = update_id;
   }
 }
 
+void dumpObject(JSONVar obj) {
+  JSONVar resultKeys = obj.keys();
+
+  for (int j = 0; j < resultKeys.length(); j++) {
+    JSONVar value = obj[resultKeys[j]];
+    Serial.print(resultKeys[j]);
+    Serial.print(" = ");
+    Serial.println(value);  
+  }
+}
+
+void handleResponse(int chat_id, String text) {
+  if (text == "/abrir") {
+    sendResponse(chat_id, "Porta%20aberta.");
+  }
+  if (text == "/fechar") {
+    sendResponse(chat_id, "Porta%20fechada.");
+  }
+  if (text == "/liberar_acesso") {
+    sendResponse(chat_id, "Acesso%20liberado.");
+  }
+}
+
+void sendResponse(int chat_id, String message) {
+  String sendResponseEndpoint = baseUrl + "/sendMessage?chat_id=" + chat_id + "&text=" + message;
+  stringPayload = httpPOSTRequest(sendResponseEndpoint);
+  Serial.println(stringPayload);
+  JSONVar objPayload = JSON.parse(stringPayload);
+}
+
+JSONVar getUpdates(int last_update_id) {
+  int updatesOffset = last_update_id + 1;
+  String getUpdatesEndpoint = baseUrl + "/getUpdates?offset=" + updatesOffset + "&timeout=" + polling_seconds;
+  stringPayload = httpGETRequest(getUpdatesEndpoint);
+  Serial.println(stringPayload);
+  JSONVar objPayload = JSON.parse(stringPayload);
+  return objPayload;
+}
+
+String httpPOSTRequest(String requestURL) {
+  WiFiClientSecure client;
+  HTTPClient https;
+
+  client.setInsecure();
+
+  https.begin(client, requestURL);
+
+  int httpResponseCode = https.POST("");
+
+    String payload = "{}";
+  
+  if (httpResponseCode > 0) {
+    Serial.print("HTTP Response code: ");
+    Serial.println(httpResponseCode);
+    payload = https.getString();
+  }
+  else {
+    Serial.print("Error code: ");
+    Serial.println(httpResponseCode);
+    Serial.printf("\n[HTTPS] GET... failed, error: %s\n", https.errorToString(httpResponseCode).c_str());
+  }
+  // Free resources
+  https.end();
+
+  return payload;
+}
+
 String httpGETRequest(String requestURL) {
-  // std::unique_ptr<BearSSL::WiFiClientSecure>client(new BearSSL::WiFiClientSecure);
   WiFiClientSecure client;
   HTTPClient https;
 
@@ -135,3 +182,5 @@ String httpGETRequest(String requestURL) {
 
   return payload;
 }
+
+
