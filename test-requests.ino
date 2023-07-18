@@ -7,9 +7,14 @@
 #include <Arduino_JSON.h>
 #include <WiFiClientSecure.h>
 
+// Telegram Bot Token
 const String BOT_TOKEN = "bottoken";
+// WiFi Login
 const char* ssid = "wifi-username";
+// WiFi Password
 const char* password = "wifi-pass";
+// Google Script Deployment ID:
+const char *GScriptId = "your-google-script-id";
 
 // Base URL for bot requests
 String baseUrl = "https://api.telegram.org/bot" + BOT_TOKEN;
@@ -68,7 +73,7 @@ void loop() {
     Serial.println(text);
 
 
-    handleResponse(chat_id, text);
+    handleResponse(message_id, from_id, from_first_name, chat_id, text);
 
     Serial.println("--------");
 
@@ -87,16 +92,25 @@ void dumpObject(JSONVar obj) {
   }
 }
 
-void handleResponse(int chat_id, String text) {
+void handleResponse(int message_id, int from_id, String from_first_name, int chat_id, String text) {
   if (text == "/abrir") {
     sendResponse(chat_id, "Porta%20aberta.");
+    logCommandToSheets(message_id, from_id, from_first_name, text);
   }
   if (text == "/fechar") {
     sendResponse(chat_id, "Porta%20fechada.");
+    logCommandToSheets(message_id, from_id, from_first_name, text);
   }
   if (text == "/liberar_acesso") {
     sendResponse(chat_id, "Acesso%20liberado.");
+    logCommandToSheets(message_id, from_id, from_first_name, text);
   }
+}
+
+void logCommandToSheets(int message_id, int from_id, String from_first_name, String command) {
+  String sheetsURL = "https://script.google.com" +  String("/macros/s/") + GScriptId + "/exec";
+  
+  httpPOSTRequestJson(sheetsURL, message_id, from_id, from_first_name, command);
 }
 
 void sendResponse(int chat_id, String message) {
@@ -113,6 +127,39 @@ JSONVar getUpdates(int last_update_id) {
   Serial.println(stringPayload);
   JSONVar objPayload = JSON.parse(stringPayload);
   return objPayload;
+}
+
+String httpPOSTRequestJson(String requestURL, int message_id, int from_id, String from_first_name, String command) {
+  WiFiClientSecure client;
+  HTTPClient https;
+
+  client.setInsecure();
+  https.addHeader("Content-Type", "application/json");
+  https.begin(client, requestURL);
+
+  String payload = "";
+  String payload_base =  "{\"command\": \"insert_row\", \"sheet_name\": \"logs\", \"values\": ";
+
+  payload = payload_base + "\"" + message_id + "," + from_id + "," + from_first_name + "," + command + "\"}";
+
+  int httpResponseCode = https.POST(payload);
+
+  String response = "{}";
+  
+  if (httpResponseCode > 0) {
+    Serial.print("HTTP Response code: ");
+    Serial.println(httpResponseCode);
+    response = https.getString();
+    Serial.println(response);
+  }
+  else {
+    Serial.print("Error code: ");
+    Serial.println(httpResponseCode);
+    Serial.printf("\n[HTTPS] POST... failed, error: %s\n", https.errorToString(httpResponseCode).c_str());
+  }
+  // Free resources
+  https.end();
+  return response;
 }
 
 String httpPOSTRequest(String requestURL) {
