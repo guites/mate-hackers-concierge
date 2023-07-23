@@ -6,6 +6,9 @@
 #include <ESP8266HTTPClient.h>
 #include <Arduino_JSON.h>
 #include <WiFiClientSecure.h>
+#include <optional>
+#include <algorithm>
+#include <vector>
 
 // Telegram Bot Token
 const String BOT_TOKEN = "bottoken";
@@ -28,16 +31,22 @@ int polling_seconds = 30;
 
 /**
  * user_type used to authorize specific actions.
- * + `JEDI` - ...
- * + `PADAWAN` - ...
+ * In the current implementation, userTypes with higher values
+ * are allowed to perform all commands of userTypes lower in
+ * the hierarchy, ex: A Jedi can do everything that a Padawan
+ * and a Youngling could. A Padawan can do everything that a
+ * Youngling could, etc.
+ *
  * + `SITH` - Blocked from interacting with the bot, but there is interest in keeping attempts registered.
  * + `YOUNGLING` - User is allowed to interact with the bot, but has no permissions.
+ * + `PADAWAN` - ...
+ * + `JEDI` - ...
  */
 typedef enum {
-    JEDI,
-    PADAWAN,
-    SITH,
-    YOUNGLING
+    SITH = -1,
+    YOUNGLING = 0,
+    PADAWAN = 1,
+    JEDI = 2,
 } userType_t;
 
 class User {
@@ -46,6 +55,29 @@ class User {
     String telegram_id;
     String name;
     userType_t user_type;
+
+    bool canRunCommand(const String& command) const {
+      // Get the required user type for the command
+      userType_t requiredType = getUserTypeRequiredForCommand(command);
+
+      // Compare the user's type with the required type for the command
+      return static_cast<int>(user_type) >= static_cast<int>(requiredType);
+    }
+
+  private:
+    // Defines the command-to-user_type mapping
+    userType_t getUserTypeRequiredForCommand(const String& command) const {
+        if (command == "/liberar_acesso") {
+          return JEDI;
+        } 
+        if (command == "/abrir") {
+          return PADAWAN;
+        }
+        // Set a default case for unknown commands or commands that don't have any specific user type requirement
+        return YOUNGLING;
+    }
+  
+
 };
 
 userType_t getUserType(const String& userTypeString) {
@@ -152,20 +184,64 @@ bool authenticateUser(int from_id) {
   return found;
 }
 
+std::optional<User> findUser(int from_id) {
+  // Check if a given telegram_id exists in the registered_users array
+  Serial.print("Authenticating user with Telegram ID ");
+  Serial.print(from_id);
+  Serial.println(" ...");
+
+  for (const auto& user : registered_users) {
+    if (user.telegram_id == String(from_id)) {
+      return std::optional<User>(user);
+    }
+  }
+
+  return std::nullopt;
+}
+
+bool isCommandInList(const String& command, const std::vector<String> commandList) {
+  // Use std::find to search for the command in the commandList
+  // If the command is found, std::find returns an iterator pointing to the found element
+  // If not found, it returns the end iterator of the vector
+  // So, we can check if the iterator is not equal to end() to determine if the command is in the list
+  
+  auto it = std::find(commandList.begin(), commandList.end(), command);
+  return it != commandList.end();
+}
+
 void handleResponse(int message_id, int from_id, String from_first_name, int chat_id, String text) {
   // TODO: should we log messages from unregistered users?
-  if (!authenticateUser(from_id)) {
+  std::optional<User> found = findUser(from_id);
+
+  // Telegram id not in list of registered users,
+  // send a default message and quit
+  if (!found.has_value()) {
     sendResponse(chat_id, "Bem%20vindo%20ao%20Mate%20Hackers.%20Este%20BOT%20%C3%A9%20para%20uso%20exclusivo%20de%20membros%20registrados.%20Para%20mais%20informa%C3%A7%C3%B5es%2C%20entre%20em%20contato%20conosco%20atrav%C3%A9s%20do%20nosso%20canal%20do%20Telegram%3A%20https%3A%2F%2Ft.me%2Fmatehackerspoa");
     return;
   }
+
+  User user = found.value();
+
+  std::vector<String> availableCommands = { "/abrir", "/liberar_acesso" };
+  String command = text;
+
+  bool commandInList = isCommandInList(command, availableCommands);
+
+  if (!commandInList) {
+    sendResponse(chat_id, "Comando%20inv%C3%A1lido.");
+    return;
+  }
+
+  if (!user.canRunCommand(command)) {
+    sendResponse(chat_id, "Voc%C3%AA%20n%C3%A3o%20tem%20permiss%C3%A3o%20para%20utilizar%20esse%20comando.%20Entre%20em%20contato%20atrav%C3%A9s%20do%20chat.");
+    return;
+  }
+
   if (text == "/abrir") {
     sendResponse(chat_id, "Porta%20aberta.");
     logCommandToSheets(message_id, from_id, from_first_name, text);
   }
-  if (text == "/fechar") {
-    sendResponse(chat_id, "Porta%20fechada.");
-    logCommandToSheets(message_id, from_id, from_first_name, text);
-  }
+
   if (text == "/liberar_acesso") {
     sendResponse(chat_id, "Acesso%20liberado.");
     logCommandToSheets(message_id, from_id, from_first_name, text);
