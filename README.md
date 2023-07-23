@@ -15,6 +15,10 @@ Projeto da fechadura digital do matehackers usando ESP8266 :)
 1. Quando o board aparecer na listagem de ports, rodar o seguinte comando: `sudo apt-get autoremove brltty`.
 2. Erro de leitura em /dev/ttyUSB0: `sudo chmod a+rw /dev/ttyUSB0`.
 
+## Diagrama da aplicação
+
+Work in progress. Acesso via miro em <https://miro.com/app/board/uXjVMznggSw=/>
+
 ## Referências
 
 - https://arduino.stackexchange.com/a/55679
