@@ -157,32 +157,6 @@ void loop() {
   }
 }
 
-void dumpObject(JSONVar obj) {
-  JSONVar resultKeys = obj.keys();
-
-  for (int j = 0; j < resultKeys.length(); j++) {
-    JSONVar value = obj[resultKeys[j]];
-    Serial.print(resultKeys[j]);
-    Serial.print(" = ");
-    Serial.println(value);  
-  }
-}
-
-bool authenticateUser(int from_id) {
-  // Check if a given telegram_id exists in the userArray
-  bool found = false;
-  Serial.print("Authenticating user with Telegram ID ");
-  Serial.print(from_id);
-  Serial.println(" ...");
-  for (const auto& user : registered_users) {
-    if (user.telegram_id == String(from_id)) {
-      found = true;
-      break;
-    }
-  }
-
-  return found;
-}
 
 std::optional<User> findUser(int from_id) {
   // Check if a given telegram_id exists in the registered_users array
