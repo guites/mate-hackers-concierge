@@ -141,17 +141,7 @@ void loop() {
 
     String text = update["message"]["text"];
 
-    Serial.println("--------");
-    Serial.print(update_id);
-    Serial.print(" from ");
-    Serial.print(from_first_name);
-    Serial.print(": ");
-    Serial.println(text);
-
-
     handleResponse(message_id, from_id, from_first_name, chat_id, text);
-
-    Serial.println("--------");
 
     last_received_id = update_id;
   }
@@ -289,12 +279,16 @@ void printFoundUsers(std::vector<User> userArray) {
 void logCommandToSheets(int message_id, int from_id, String from_first_name, String command) {
   String sheetsURL = "https://script.google.com" +  String("/macros/s/") + PostGScriptId + "/exec";
   
-  httpPOSTRequestJson(sheetsURL, message_id, from_id, from_first_name, command);
+  String payload = "";
+  String payload_base =  "{\"command\": \"insert_row\", \"sheet_name\": \"logs\", \"values\": ";
+  payload = payload_base + "\"" + message_id + "," + from_id + "," + from_first_name + "," + command + "\"}";
+  
+  httpPostRequest(sheetsURL, payload);
 }
 
 void sendResponse(int chat_id, String message) {
   String sendResponseEndpoint = baseUrl + "/sendMessage?chat_id=" + chat_id + "&text=" + message;
-  String stringPayload = httpPOSTRequest(sendResponseEndpoint);
+  String stringPayload = httpPostRequest(sendResponseEndpoint, "");
   Serial.println(stringPayload);
   JSONVar objPayload = JSON.parse(stringPayload);
 }
@@ -308,18 +302,17 @@ JSONVar getUpdates(int last_update_id) {
   return objPayload;
 }
 
-String httpPOSTRequestJson(String requestURL, int message_id, int from_id, String from_first_name, String command) {
+String httpPostRequest(String requestURL, String payload) {
   WiFiClientSecure client;
   HTTPClient https;
 
   client.setInsecure();
-  https.addHeader("Content-Type", "application/json");
+  if (payload != "") {
+    // assume we always send json
+    https.addHeader("Content-Type", "application/json");
+  }
+
   https.begin(client, requestURL);
-
-  String payload = "";
-  String payload_base =  "{\"command\": \"insert_row\", \"sheet_name\": \"logs\", \"values\": ";
-
-  payload = payload_base + "\"" + message_id + "," + from_id + "," + from_first_name + "," + command + "\"}";
 
   int httpResponseCode = https.POST(payload);
 
@@ -329,34 +322,6 @@ String httpPOSTRequestJson(String requestURL, int message_id, int from_id, Strin
     Serial.print("HTTP Response code: ");
     Serial.println(httpResponseCode);
     response = https.getString();
-    Serial.println(response);
-  }
-  else {
-    Serial.print("Error code: ");
-    Serial.println(httpResponseCode);
-    Serial.printf("\n[HTTPS] POST... failed, error: %s\n", https.errorToString(httpResponseCode).c_str());
-  }
-  // Free resources
-  https.end();
-  return response;
-}
-
-String httpPOSTRequest(String requestURL) {
-  WiFiClientSecure client;
-  HTTPClient https;
-
-  client.setInsecure();
-
-  https.begin(client, requestURL);
-
-  int httpResponseCode = https.POST("");
-
-    String payload = "{}";
-  
-  if (httpResponseCode > 0) {
-    Serial.print("HTTP Response code: ");
-    Serial.println(httpResponseCode);
-    payload = https.getString();
   }
   else {
     Serial.print("Error code: ");
@@ -366,7 +331,7 @@ String httpPOSTRequest(String requestURL) {
   // Free resources
   https.end();
 
-  return payload;
+  return response;
 }
 
 String httpGETRequest(String requestURL, int timeoutSeconds, bool followRedirects) {
