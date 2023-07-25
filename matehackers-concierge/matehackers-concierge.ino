@@ -20,6 +20,8 @@ const char* password = "wifi-pass";
 const char *PostGScriptId = "your-google-script-id";
 // Google Script Deployment ID for reading the list of users
 const char *ReadUsersGScriptId = "your-google-script-id";
+// Google Script Deployment ID for managing accesses
+const char *AccessesGScriptId = "your-google-script-id";
 
 // Base URL for bot requests
 String baseUrl = "https://api.telegram.org/bot" + BOT_TOKEN;
@@ -163,14 +165,46 @@ std::optional<User> findUser(int from_id) {
   return std::nullopt;
 }
 
-bool isCommandInList(const String& command, const std::vector<String> commandList) {
-  // Use std::find to search for the command in the commandList
-  // If the command is found, std::find returns an iterator pointing to the found element
-  // If not found, it returns the end iterator of the vector
-  // So, we can check if the iterator is not equal to end() to determine if the command is in the list
-  
-  auto it = std::find(commandList.begin(), commandList.end(), command);
-  return it != commandList.end();
+std::optional<String> isCommandInList(const String& command, const std::vector<String> commandList) {
+  // if the received command starts with any value from commandList, return that value
+  // otherwise, returns std::nullop
+  for (const String& element : commandList) {
+    if (command.startsWith(element)) {
+      return element;
+    }
+  }
+
+  return std::nullopt;
+}
+
+std::optional<String> getReceivedUserId(const String& text) {
+  // Validates that the received text is in the format
+  // "/liberar_acesso {number}" and then returns that number
+  // returns std::nullopt otherwise
+
+  String prefix = "/liberar_acesso";
+  if (!text.startsWith(prefix)) {
+    return std::nullopt;
+  }
+
+  for (size_t i = prefix.length() + 1; i < text.length(); ++i) {
+    if (!std::isdigit(text[i])) {
+      return std::nullopt;
+    }
+  }
+  return text.substring(prefix.length() + 1);
+}
+
+String generateAccessToken() {
+  String randomNumberStr = "";
+  for (int i = 0; i < 6; i++) {
+    // Generate a random digit (0-9)
+    int digit = random(10);
+    
+    // Append the new digit to the string
+    randomNumberStr += String(digit);
+  }
+  return randomNumberStr;
 }
 
 void handleResponse(int message_id, int from_id, String from_first_name, int chat_id, String text) {
@@ -187,27 +221,40 @@ void handleResponse(int message_id, int from_id, String from_first_name, int cha
   User user = found.value();
 
   std::vector<String> availableCommands = { "/abrir", "/liberar_acesso" };
-  String command = text;
 
-  bool commandInList = isCommandInList(command, availableCommands);
-
-  if (!commandInList) {
+  std::optional<String> parsedCommand = isCommandInList(text, availableCommands);
+  if (!parsedCommand.has_value()) {
     sendResponse(chat_id, "Comando%20inv%C3%A1lido.");
     return;
   }
+  String command = parsedCommand.value();
 
   if (!user.canRunCommand(command)) {
     sendResponse(chat_id, "Voc%C3%AA%20n%C3%A3o%20tem%20permiss%C3%A3o%20para%20utilizar%20esse%20comando.%20Entre%20em%20contato%20atrav%C3%A9s%20do%20chat.");
     return;
   }
 
-  if (text == "/abrir") {
+  if (command == "/abrir") {
     sendResponse(chat_id, "Porta%20aberta.");
     logCommandToSheets(message_id, from_id, from_first_name, text);
   }
 
-  if (text == "/liberar_acesso") {
-    sendResponse(chat_id, "Acesso%20liberado.");
+  if (command == "/liberar_acesso") {
+    std::optional<String> parsedId = getReceivedUserId(text);
+    if (!parsedId.has_value()) {
+      sendResponse(chat_id, "Uso%3A%20%60%2Fliberar_acesso%20%7Bid_do_usu%C3%A1rio%7D%60%2C%20onde%20o%20%7Bid_do_usu%C3%A1rio%7D%20%C3%A9%20o%20id%20do%20telegram%20de%20quem%20voc%C3%AA%20quer%20permitir%20a%20entrada.");
+      return;
+    }
+    String receivedUserId = parsedId.value();
+
+    if (receivedUserId.length() == 0) {
+      sendResponse(chat_id, "Uso%3A%20%60%2Fliberar_acesso%20%7Bid_do_usu%C3%A1rio%7D%60%2C%20onde%20o%20%7Bid_do_usu%C3%A1rio%7D%20%C3%A9%20o%20id%20do%20telegram%20de%20quem%20voc%C3%AA%20quer%20permitir%20a%20entrada.");
+      return;
+    }
+
+    String accessToken = generateAccessToken();
+    registerUserAccess(user.telegram_id, receivedUserId, accessToken);
+    sendResponse(chat_id, "Acesso%20liberado%20pelos%20pr%C3%B3ximos%205%20minutos.%20Avise%20o%20usu%C3%A1rio%20para%20entrar%20em%20contato%20com%20https%3A%2F%2Fweb.telegram.org%2Fk%2F%23%40concierge_mate_bot%20e%20utilizar%20o%20comando%20%2Facessar%20.");
     logCommandToSheets(message_id, from_id, from_first_name, text);
   }
   // TODO: Add a default response listing available commands
@@ -283,6 +330,16 @@ void logCommandToSheets(int message_id, int from_id, String from_first_name, Str
   String payload_base =  "{\"command\": \"insert_row\", \"sheet_name\": \"logs\", \"values\": ";
   payload = payload_base + "\"" + message_id + "," + from_id + "," + from_first_name + "," + command + "\"}";
   
+  httpPostRequest(sheetsURL, payload);
+}
+
+void registerUserAccess(String responsible_telegram_id, String access_user_telegram_id, String access_token) {
+  String sheetsURL = "https://script.google.com" +  String("/macros/s/") + AccessesGScriptId + "/exec";
+
+  String payload = "";
+  String payload_base =  "{\"values\": ";
+  payload = payload_base + "\"" + responsible_telegram_id + "," + access_user_telegram_id + "," + access_token + "\"}";
+
   httpPostRequest(sheetsURL, payload);
 }
 
