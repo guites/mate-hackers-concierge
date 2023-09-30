@@ -11,15 +11,15 @@
 #include <vector>
 
 // Telegram Bot Token
-const String BOT_TOKEN = "bottoken";
+const String BOT_TOKEN = "bot-token";
 // WiFi Login
-const char* ssid = "wifi-username";
+const char* ssid = "wifi-ssid";
 // WiFi Password
-const char* password = "wifi-pass";
+const char* password = "pass";
 // Google Script Deployment ID for logging commands
-const char *PostGScriptId = "your-google-script-id";
+const char *PostGScriptId = "bot-token";
 // Google Script Deployment ID for reading the list of users
-const char *ReadUsersGScriptId = "your-google-script-id";
+const char *ReadUsersGScriptId = "bot-token";
 
 // Base URL for bot requests
 String baseUrl = "https://api.telegram.org/bot" + BOT_TOKEN;
@@ -54,6 +54,8 @@ class User {
     int id;
     String telegram_id;
     String name;
+    String password;
+    String salt;
     userType_t user_type;
 
     bool canRunCommand(const String& command) const {
@@ -235,12 +237,14 @@ String readUsersFromSheets() {
 
   // Create an array of User objects from the tokens
   std::vector<User> userArray;
-  for (size_t i = 0; i < tokens.size(); i += 4) {
+  for (size_t i = 0; i < tokens.size(); i += 6) {
       User user;
       user.id = tokens[i].toInt();
       user.telegram_id = tokens[i + 1];
       user.name = tokens[i + 2];
       user.user_type = getUserType(tokens[i + 3]);
+      user.password = tokens[i + 4];
+      user.salt = tokens[i + 5];
       userArray.push_back(user);
   }
   registered_users = userArray;
