@@ -78,8 +78,53 @@ class User {
         // Set a default case for unknown commands or commands that don't have any specific user type requirement
         return YOUNGLING;
     }
-  
+};
 
+/**
+ * used to define pin functions
+ *
+ * + `OUTPUT` - Registers a pin as an OUTPUT pin
+ * + `INPUT` - Registers a pin as an INPUT pin
+ */
+typedef enum {
+    OUT_PIN = OUTPUT,
+    IN_PIN = INPUT,
+} pinFunction_t;
+
+class Pin {
+    private:
+      int number;
+      String name;
+      pinFunction_t pin_function;
+
+      void setPinHigh() {
+        digitalWrite(number, HIGH);
+      }
+
+      void setPinLow() {
+        digitalWrite(number, LOW);
+      }
+
+    public:
+      Pin(int number, String name, pinFunction_t pin_function) {
+        number = number;
+        name = name;
+        pin_function = pin_function;
+      }
+
+      void turnOnForSeconds(int interval_seconds) {
+        setPinHigh();
+        delay(interval_seconds);
+        setPinLow();
+      }
+
+      void setOn() {
+        setPinHigh();
+      }
+
+      int getNumber() const { return number; }
+      String getName() const { return name; }
+      pinFunction_t getPinFunction() const { return pin_function; }
 };
 
 userType_t getUserType(const String& userTypeString) {
@@ -99,9 +144,15 @@ userType_t getUserType(const String& userTypeString) {
 // Holds list of users fetched from the database
 std::vector<User> registered_users;
 
+// esp32 pins to be used
+Pin greenPin(5, "GREEN", OUT_PIN);
+Pin redPin(6, "RED", OUT_PIN);
 
 void setup() {
   Serial.begin(115200);
+  Serial.println("turning led on...");
+  redPin.turnOnForSeconds(10000);
+  Serial.println("turning led off...");
   // Allow some time for the serial port to initialize
   delay(1000);
   WiFi.mode(WIFI_STA);
@@ -200,12 +251,14 @@ void handleResponse(int message_id, int from_id, String from_first_name, int cha
 
   if (!user.canRunCommand(command)) {
     sendResponse(chat_id, "Voc%C3%AA%20n%C3%A3o%20tem%20permiss%C3%A3o%20para%20utilizar%20esse%20comando.%20Entre%20em%20contato%20atrav%C3%A9s%20do%20chat.");
+    redPin.turnOnForSeconds(1000);
     return;
   }
 
   if (text == "/abrir") {
     sendResponse(chat_id, "Porta%20aberta.");
     logCommandToSheets(message_id, from_id, from_first_name, text);
+    greenPin.turnOnForSeconds(1000);
   }
 
   if (text == "/liberar_acesso") {
@@ -379,5 +432,3 @@ String httpGETRequest(String requestURL, int timeoutSeconds, bool followRedirect
 
   return payload;
 }
-
-
